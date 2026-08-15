@@ -1,0 +1,738 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#define MAX_MEMBERS 200
+#define NAME_LEN 50
+
+typedef struct {
+    unsigned int id;
+    char name[NAME_LEN];
+    char plan_type[15];
+    char join_date[11];
+    char expiry_date[11];
+    int active;
+} Member;
+
+Member members[MAX_MEMBERS];
+int member_count = 0;
+
+float get_plan_price(char plan[]) {
+    if (strcmp(plan, "Basic") == 0) {
+        return 1000.0;
+    }
+    else if (strcmp(plan, "Standard") == 0) {
+        return 1500.0;
+    }
+    else if (strcmp(plan, "Premium") == 0) {
+        return 2000.0;
+    }
+
+    return 0.0;
+}
+
+int days_in_month(int month, int year) {
+    if (month == 2) {
+        if ((year % 400 == 0) ||
+            (year % 4 == 0 && year % 100 != 0)) {
+            return 29;
+        }
+
+        return 28;
+    }
+
+    if (month == 4 ||
+        month == 6 ||
+        month == 9 ||
+        month == 11) {
+        return 30;
+    }
+
+    return 31;
+}
+
+int valid_date(char date[]) {
+    int day;
+    int month;
+    int year;
+
+    if (sscanf(date, "%d/%d/%d",
+               &day, &month, &year) != 3) {
+        return 0;
+    }
+
+    if (year < 2000 || year > 2100) {
+        return 0;
+    }
+
+    if (month < 1 || month > 12) {
+        return 0;
+    }
+
+    if (day < 1 ||
+        day > days_in_month(month, year)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+void get_today(char today[]) {
+    time_t t;
+    struct tm *current;
+
+    t = time(NULL);
+
+    current = localtime(&t);
+
+    sprintf(today,
+            "%02d/%02d/%04d",
+            current->tm_mday,
+            current->tm_mon + 1,
+            current->tm_year + 1900);
+}
+
+long date_to_days(char date[]) {
+    int day;
+    int month;
+    int year;
+
+    long total = 0;
+
+    sscanf(date,
+           "%d/%d/%d",
+           &day,
+           &month,
+           &year);
+
+    for (int y = 1; y < year; y++) {
+        total += 365;
+
+        if ((y % 400 == 0) ||
+            (y % 4 == 0 && y % 100 != 0)) {
+            total++;
+        }
+    }
+
+    for (int m = 1; m < month; m++) {
+        total += days_in_month(m, year);
+    }
+
+    total += day;
+
+    return total;
+}
+
+int compare_dates(char date1[], char date2[]) {
+    long d1;
+    long d2;
+
+    d1 = date_to_days(date1);
+    d2 = date_to_days(date2);
+
+    if (d1 < d2) {
+        return -1;
+    }
+    else if (d1 > d2) {
+        return 1;
+    }
+
+    return 0;
+}
+
+void add_months(char date[],
+                int months,
+                char result[]) {
+
+    int day;
+    int month;
+    int year;
+
+    sscanf(date,
+           "%d/%d/%d",
+           &day,
+           &month,
+           &year);
+
+    month = month + months;
+
+    while (month > 12) {
+        month = month - 12;
+        year++;
+    }
+
+    int max_day =
+        days_in_month(month, year);
+
+    if (day > max_day) {
+        day = max_day;
+    }
+
+    sprintf(result,
+            "%02d/%02d/%04d",
+            day,
+            month,
+            year);
+}
+
+void save_data() {
+    FILE *file;
+
+    file = fopen("members.dat", "wb");
+
+    if (file == NULL) {
+        printf("\nError: Could not save data!\n");
+        return;
+    }
+
+    fwrite(&member_count,
+           sizeof(int),
+           1,
+           file);
+
+    fwrite(members,
+           sizeof(Member),
+           member_count,
+           file);
+
+    fclose(file);
+}
+
+void load_data() {
+    FILE *file;
+
+    file = fopen("members.dat", "rb");
+
+    if (file == NULL) {
+        return;
+    }
+
+    fread(&member_count,
+          sizeof(int),
+          1,
+          file);
+
+    if (member_count < 0 ||
+        member_count > MAX_MEMBERS) {
+
+        member_count = 0;
+
+        fclose(file);
+
+        return;
+    }
+
+    fread(members,
+          sizeof(Member),
+          member_count,
+          file);
+
+    fclose(file);
+
+    char today[11];
+
+    get_today(today);
+
+    int changed = 0;
+
+    for (int i = 0;
+         i < member_count;
+         i++) {
+
+        if (compare_dates(
+                members[i].expiry_date,
+                today) < 0) {
+
+            if (members[i].active == 1) {
+                members[i].active = 0;
+                changed = 1;
+            }
+        }
+    }
+
+    if (changed) {
+        save_data();
+    }
+}
+
+void register_member() {
+
+    if (member_count >= MAX_MEMBERS) {
+        printf("\nMember limit reached!\n");
+        return;
+    }
+
+    Member new_member;
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("          REGISTER MEMBER\n");
+    printf("=====================================\n");
+
+    new_member.id = member_count + 1;
+
+    printf("Enter member name: ");
+
+    getchar();
+
+    fgets(new_member.name,
+          NAME_LEN,
+          stdin);
+
+    new_member.name[
+        strcspn(new_member.name, "\n")
+    ] = '\0';
+
+    printf("\nAvailable Plans:\n");
+
+    printf("1. Basic    - 1000 BDT/month\n");
+    printf("2. Standard - 1500 BDT/month\n");
+    printf("3. Premium  - 2000 BDT/month\n");
+
+    int choice;
+
+    printf("\nChoose plan: ");
+    scanf("%d", &choice);
+
+    if (choice == 1) {
+        strcpy(new_member.plan_type, "Basic");
+    }
+    else if (choice == 2) {
+        strcpy(new_member.plan_type, "Standard");
+    }
+    else if (choice == 3) {
+        strcpy(new_member.plan_type, "Premium");
+    }
+    else {
+        printf("\nInvalid plan!\n");
+        return;
+    }
+
+    do {
+        printf("Enter join date (DD/MM/YYYY): ");
+
+        scanf("%10s",
+              new_member.join_date);
+
+        if (!valid_date(
+                new_member.join_date)) {
+
+            printf("Invalid date! Try again.\n");
+        }
+
+    } while (!valid_date(
+                 new_member.join_date));
+
+    add_months(
+        new_member.join_date,
+        1,
+        new_member.expiry_date);
+
+    new_member.active = 1;
+
+    members[member_count] = new_member;
+
+    member_count++;
+
+    save_data();
+
+    printf("\n");
+    printf("Member registered successfully!\n");
+
+    printf("-------------------------------------\n");
+
+    printf("Member ID    : %u\n",
+           new_member.id);
+
+    printf("Name         : %s\n",
+           new_member.name);
+
+    printf("Plan         : %s\n",
+           new_member.plan_type);
+
+    printf("Join Date    : %s\n",
+           new_member.join_date);
+
+    printf("Expiry Date  : %s\n",
+           new_member.expiry_date);
+
+    printf("Monthly Fee  : %.2f BDT\n",
+           get_plan_price(
+               new_member.plan_type));
+
+    printf("-------------------------------------\n");
+}
+
+int find_member(unsigned int id) {
+
+    for (int i = 0;
+         i < member_count;
+         i++) {
+
+        if (members[i].id == id) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+void renew_membership() {
+
+    unsigned int id;
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("          RENEW MEMBERSHIP\n");
+    printf("=====================================\n");
+
+    printf("Enter member ID: ");
+    scanf("%u", &id);
+
+    int index = find_member(id);
+
+    if (index == -1) {
+        printf("\nMember not found!\n");
+        return;
+    }
+
+    int months;
+
+    printf("Enter number of months to renew: ");
+    scanf("%d", &months);
+
+    if (months <= 0) {
+        printf("\nInvalid number of months!\n");
+        return;
+    }
+
+    char start_date[11];
+    char today[11];
+
+    get_today(today);
+
+    if (compare_dates(
+            members[index].expiry_date,
+            today) < 0) {
+
+        strcpy(start_date, today);
+    }
+    else {
+        strcpy(start_date,
+               members[index].expiry_date);
+    }
+
+    add_months(
+        start_date,
+        months,
+        members[index].expiry_date);
+
+    members[index].active = 1;
+
+    save_data();
+
+    float renewal_cost =
+        get_plan_price(
+            members[index].plan_type)
+        * months;
+
+    printf("\n");
+    printf("Membership renewed successfully!\n");
+
+    printf("-------------------------------------\n");
+
+    printf("Member       : %s\n",
+           members[index].name);
+
+    printf("Plan         : %s\n",
+           members[index].plan_type);
+
+    printf("Months       : %d\n",
+           months);
+
+    printf("New Expiry   : %s\n",
+           members[index].expiry_date);
+
+    printf("Renewal Cost : %.2f BDT\n",
+           renewal_cost);
+
+    printf("-------------------------------------\n");
+}
+
+void check_expired() {
+
+    char today[11];
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("       CHECK EXPIRED MEMBERS\n");
+    printf("=====================================\n");
+
+    get_today(today);
+
+    printf("Today's Date: %s\n",
+           today);
+
+    int expired_count = 0;
+
+    for (int i = 0;
+         i < member_count;
+         i++) {
+
+        if (compare_dates(
+                members[i].expiry_date,
+                today) < 0) {
+
+            if (members[i].active == 1) {
+
+                members[i].active = 0;
+
+                expired_count++;
+            }
+        }
+    }
+
+    save_data();
+
+    printf("\nExpired memberships updated.\n");
+
+    printf("Newly expired members: %d\n",
+           expired_count);
+}
+
+void attendance_checkin() {
+
+    unsigned int id;
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("         ATTENDANCE CHECK-IN\n");
+    printf("=====================================\n");
+
+    printf("Enter member ID: ");
+    scanf("%u", &id);
+
+    int index = find_member(id);
+
+    if (index == -1) {
+        printf("\nMember not found!\n");
+        return;
+    }
+
+    if (members[index].active == 0) {
+
+        printf("\nMembership expired/inactive!\n");
+        printf("Check-in denied.\n");
+
+        return;
+    }
+
+    printf("\nCheck-in successful!\n");
+
+    printf("Member: %s\n",
+           members[index].name);
+
+    printf("Plan: %s\n",
+           members[index].plan_type);
+}
+
+void revenue_report() {
+
+    float total = 0.0;
+
+    int basic = 0;
+    int standard = 0;
+    int premium = 0;
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("           REVENUE REPORT\n");
+    printf("=====================================\n");
+
+    if (member_count == 0) {
+
+        printf("\nNo members registered.\n");
+
+        return;
+    }
+
+    for (int i = 0;
+         i < member_count;
+         i++) {
+
+        if (strcmp(
+                members[i].plan_type,
+                "Basic") == 0) {
+
+            basic++;
+
+            total += 1000.0;
+        }
+        else if (strcmp(
+                     members[i].plan_type,
+                     "Standard") == 0) {
+
+            standard++;
+
+            total += 1500.0;
+        }
+        else if (strcmp(
+                     members[i].plan_type,
+                     "Premium") == 0) {
+
+            premium++;
+
+            total += 2000.0;
+        }
+    }
+
+    printf("\n");
+    printf("---------- PLAN DETAILS ----------\n");
+
+    printf("Basic Members     : %d\n",
+           basic);
+
+    printf("Standard Members  : %d\n",
+           standard);
+
+    printf("Premium Members   : %d\n",
+           premium);
+
+    printf("\n");
+    printf("---------- REVENUE ----------\n");
+
+    printf("Basic Revenue     : %.2f BDT\n",
+           basic * 1000.0);
+
+    printf("Standard Revenue  : %.2f BDT\n",
+           standard * 1500.0);
+
+    printf("Premium Revenue   : %.2f BDT\n",
+           premium * 2000.0);
+
+    printf("-------------------------------------\n");
+
+    printf("Total Revenue     : %.2f BDT\n",
+           total);
+
+    printf("=====================================\n");
+}
+
+void display_members() {
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("            ALL MEMBERS\n");
+    printf("=====================================\n");
+
+    if (member_count == 0) {
+
+        printf("\nNo members found.\n");
+
+        return;
+    }
+
+    for (int i = 0;
+         i < member_count;
+         i++) {
+
+        printf("\n");
+
+        printf("-------------------------------------\n");
+
+        printf("ID           : %u\n",
+               members[i].id);
+
+        printf("Name         : %s\n",
+               members[i].name);
+
+        printf("Plan         : %s\n",
+               members[i].plan_type);
+
+        printf("Join Date    : %s\n",
+               members[i].join_date);
+
+        printf("Expiry Date  : %s\n",
+               members[i].expiry_date);
+
+        if (members[i].active == 1) {
+            printf("Status       : ACTIVE\n");
+        }
+        else {
+            printf("Status       : EXPIRED/INACTIVE\n");
+        }
+    }
+
+    printf("-------------------------------------\n");
+}
+
+int main() {
+
+    int choice;
+
+    load_data();
+
+    printf("\n");
+    printf("=====================================\n");
+    printf("          DAFFODIL GYM\n");
+    printf("     GYM MEMBERSHIP MANAGEMENT\n");
+    printf("=====================================\n");
+
+    do {
+
+        printf("\n");
+        printf("========== MAIN MENU ==========\n");
+
+        printf("1. Register Member\n");
+        printf("2. Renew Membership\n");
+        printf("3. Check Expired Members\n");
+        printf("4. Attendance Check-in\n");
+        printf("5. Revenue Report\n");
+        printf("6. Display All Members\n");
+        printf("0. Exit\n");
+
+        printf("===============================\n");
+
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        if (choice == 1) {
+
+            register_member();
+        }
+        else if (choice == 2) {
+
+            renew_membership();
+        }
+        else if (choice == 3) {
+
+            check_expired();
+        }
+        else if (choice == 4) {
+
+            attendance_checkin();
+        }
+        else if (choice == 5) {
+
+            revenue_report();
+        }
+        else if (choice == 6) {
+
+            display_members();
+        }
+        else if (choice == 0) {
+
+            printf("\n");
+            printf("Thank you for using ");
+            printf("Gym Membership Management System!\n");
+        }
+        else {
+
+            printf("\nInvalid choice! Try again.\n");
+        }
+
+    } while (choice != 0);
+
+    return 0;
+}
